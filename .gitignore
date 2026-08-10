@@ -110,3 +110,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Screenshots and terminal outputs collected for the graded submission
+evidence/
