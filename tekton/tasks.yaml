@@ -1,5 +1,5 @@
 ---
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: echo
@@ -15,7 +15,7 @@ spec:
       command: [/bin/echo]
       args: ["$(params.message)"]
 ---
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: cleanup
@@ -49,4 +49,187 @@ spec:
           # Delete files and directories starting with .. plus any other character
           rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
         fi
-
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: git-clone
+spec:
+  description: This task clones a git repository into the workspace.
+  params:
+    - name: url
+      description: The URL of the git repository to clone
+      type: string
+    - name: revision
+      description: The branch, tag or commit to check out
+      type: string
+      default: main
+  workspaces:
+    - name: output
+  results:
+    - name: commit
+      description: The commit SHA that was checked out
+  steps:
+    - name: clone
+      image: alpine/git:latest
+      workingDir: $(workspaces.output.path)
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+      script: |
+        #!/usr/bin/env sh
+        set -eu
+        echo "Cloning $(params.url) at revision $(params.revision) ..."
+        git clone --depth 1 --branch "$(params.revision)" "$(params.url)" .
+        git rev-parse HEAD | tr -d '\n' | tee "$(results.commit.path)"
+        echo ""
+        echo "Repository cloned:"
+        ls -la
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: flake8
+spec:
+  description: This task lints the source code with flake8.
+  params:
+    - name: path
+      description: The path to lint
+      type: string
+      default: service
+    - name: args
+      description: Extra arguments passed to flake8
+      type: array
+      default: ["--count", "--max-complexity=10", "--max-line-length=127", "--statistics"]
+  workspaces:
+    - name: source
+  steps:
+    - name: flake8
+      image: python:3.9-slim
+      workingDir: $(workspaces.source.path)
+      args: ["$(params.args[*])"]
+      script: |
+        #!/bin/bash
+        set -e
+        python -m pip install --quiet --upgrade pip wheel
+        pip install --quiet flake8
+        echo "Linting $(params.path) ..."
+        flake8 $(params.path) --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 $(params.path) "$@"
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: nose
+spec:
+  description: This task runs the unit tests with nose against a PostgreSQL database.
+  params:
+    - name: database-host
+      description: The host name of the database used by the tests
+      type: string
+      default: postgresql
+    - name: database-secret
+      description: The secret holding the database credentials
+      type: string
+      default: postgresql
+    - name: args
+      description: Extra arguments passed to nosetests
+      type: string
+      default: "-v --with-spec --spec-color"
+  workspaces:
+    - name: source
+  steps:
+    - name: nosetests
+      image: python:3.9-slim
+      workingDir: $(workspaces.source.path)
+      # The credentials are read from the secret, never passed as parameters,
+      # so that they never end up in the pipeline run logs.
+      env:
+        - name: DATABASE_HOST
+          value: $(params.database-host)
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: $(params.database-secret)
+              key: database-name
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: $(params.database-secret)
+              key: database-user
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: $(params.database-secret)
+              key: database-password
+      script: |
+        #!/bin/bash
+        set -e
+        export DATABASE_URI="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:5432/${DATABASE_NAME}"
+        python -m pip install --quiet --upgrade pip wheel
+        pip install --quiet -r requirements.txt
+        echo "Running the unit tests against ${DATABASE_HOST} ..."
+        nosetests $(params.args)
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: buildah
+spec:
+  description: This task builds the container image and pushes it to the registry.
+  params:
+    - name: IMAGE
+      description: The name of the image to build and push
+      type: string
+    - name: DOCKERFILE
+      description: The path to the Dockerfile
+      type: string
+      default: ./Dockerfile
+    - name: TLSVERIFY
+      description: Verify the TLS certificate of the registry
+      type: string
+      default: "true"
+  workspaces:
+    - name: source
+  steps:
+    - name: build-and-push
+      image: quay.io/buildah/stable:v1.37
+      workingDir: $(workspaces.source.path)
+      securityContext:
+        privileged: true
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        buildah --storage-driver=vfs bud --format=docker \
+          --tls-verify=$(params.TLSVERIFY) -f $(params.DOCKERFILE) -t $(params.IMAGE) .
+        buildah --storage-driver=vfs push --tls-verify=$(params.TLSVERIFY) $(params.IMAGE) docker://$(params.IMAGE)
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-image
+spec:
+  description: This task deploys the image to the cluster using the manifests in deploy/.
+  params:
+    - name: image
+      description: The image that the deployment must run
+      type: string
+  workspaces:
+    - name: source
+  steps:
+    - name: deploy
+      image: alpine/k8s:1.35.6
+      workingDir: $(workspaces.source.path)
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo "Applying the manifests from deploy/ ..."
+        kubectl apply -f deploy/
+        echo "Rolling out the image $(params.image) ..."
+        kubectl set image deployment/accounts accounts=$(params.image)
+        kubectl rollout status deployment/accounts --timeout=300s
+        echo ""
+        kubectl get deployment,replicaset,pod,service -l app=accounts

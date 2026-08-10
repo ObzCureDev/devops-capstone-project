@@ -16,7 +16,7 @@ spec:
         app: accounts
     spec:
       containers:
-      - image: cluster-registry:32000/accounts:1
+      - image: cluster-registry:5000/accounts:1
         name: accounts
         resources: {}
         env:
