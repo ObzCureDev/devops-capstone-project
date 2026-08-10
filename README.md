@@ -1,15 +1,18 @@
-# DevOps Capstone Template
+# devops-capstone-project
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.9](https://img.shields.io/badge/Python-3.9-green.svg)](https://shields.io/)
 
-This repository contains the starter code for the project in [**IBM-CD0285EN-SkillsNetwork DevOps Capstone Project**](https://www.coursera.org/learn/devops-capstone-project?specialization=devops-and-software-engineering) which is part of the [**IBM DevOps and Software Engineering Professional Certificate**](https://www.coursera.org/professional-certificates/devops-and-software-engineering)
+Customer Accounts microservice for the e-commerce capstone of the [**IBM DevOps and Software Engineering Professional Certificate**](https://www.coursera.org/professional-certificates/devops-and-software-engineering), built for the [**IBM-CD0285EN-SkillsNetwork DevOps Capstone Project**](https://www.coursera.org/learn/devops-capstone-project?specialization=devops-and-software-engineering).
 
-## Usage
+The service keeps track of the customers of an e-commerce website. It exposes a well formed REST API that other microservices can call to **create**, **read**, **update**, **delete** and **list** customer accounts. Each account holds basic customer information: name, email, address, phone number and the date the customer joined.
 
-You should use this template to start your DevOps Capstone project. It contains all of the code that you will need to get started.
+The project is delivered over three one-week sprints, applying the practices of the certificate end to end:
 
-Do Not fork this code! It is meant to be used by pressing the  <span style=color:white;background:green>**Use this Template**</span> button in GitHub. This will copy the code to your own repository with no connection back to the original repository like a fork would. This is what you want.
+- **Sprint 0** - agile planning on a GitHub Kanban board, user story template, sprint backlog.
+- **Sprint 1** - the REST API completed with **test driven development**, keeping code coverage at 95% or above.
+- **Sprint 2** - a **CI pipeline** with GitHub Actions, plus security headers and CORS policies with Flask-Talisman and Flask-Cors.
+- **Sprint 3** - the service containerized with **Docker**, deployed to **Kubernetes**, and a **CD pipeline** built with **Tekton**.
 
 ## Development Environment
 
